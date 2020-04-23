@@ -4,6 +4,7 @@
     "@react-native-community/push-notification-ios": "^1.0.6",
     "@react-native-firebase/app": "^6.3.4",
     "@react-native-firebase/messaging": "^6.3.4",
+ 	"react-native-keyboard-aware-scroll-view": "^0.9.1",
     "axios": "^0.19.0",
     "install": "^0.13.0",
     "npm": "^6.13.7",
@@ -29,3 +30,41 @@
     "redux-saga": "^1.1.3",
     "styled-components": "^5.0.0-fixhoist"
   },
+
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import creatSagaMiddleware from 'redux-saga';
+import rootSaga from './src/sagas/rootSaga';
+import allReducers from './src/reducers';
+import { Provider } from 'react-redux';
+import { createStore, applyMiddleware } from 'redux';
+import createRootNavigator from './src/navigation/router';
+import { getAutoLogin } from './src/utils/storage'
+
+const sagaMiddleware = creatSagaMiddleware()
+let store = createStore(allReducers, applyMiddleware(sagaMiddleware))
+sagaMiddleware.run(rootSaga)
+
+const App: () => React$Node = () => {
+  const [isSigned, setIsSigned] = useState(false);
+
+  checkLogin = async () => {
+    let checkAutoLogin = await getAutoLogin();
+    if (checkAutoLogin == true) {
+      setIsSigned(true)
+      console.log("Is signed", isSigned)
+    }
+  }
+  useLayoutEffect(() => {
+    checkLogin();
+    //setIsSigned(checkAutoLogin)
+  }, []);
+
+  const Layout = createRootNavigator(isSigned)
+  return (
+    <Provider store={store}>
+      <Layout />
+    </Provider>
+  );
+};
+
+export default App;
