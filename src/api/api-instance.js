@@ -13,6 +13,20 @@ let axiosInstance = axios.create({
     timeout: 15000,
 });
 //store.subscribe(listener);
+let isRefreshing = false;
+let failedQueue: any = [];
+
+const processQueue = (error: any, token: string | null | undefined = null) => {
+    failedQueue.forEach((prom: any) => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+
+    failedQueue = [];
+};
 
 // add default token in authenticate apis
 function listener() {
@@ -47,28 +61,55 @@ axiosInstance.interceptors.response.use((response) => {
     return Promise.resolve(response.data);
 }, (error) => {
     console.log('error axios: ', error);
+     const { response } = error || {};
+        const { data } = response || {};
+        const { errorMessage, errorKey } = data || {};
     
-    let errorResponse = {
-        status: error.response ? error.response.status : ResponseCode.INTERNAL_SERVER_ERROR,
-        meta: error.response.data?.meta ? error.response.data.meta : undefined,
-        data: error.response.data?.data ? error.response.data.data : undefined,
-    };
-    switch (errorResponse.status) {
-        case ResponseCode.NOT_FOUND:
-           // handle api url not found
-            break;
-        case ResponseCode.BAD_GATEWAY:
-            // handle something went wrong with server
-            break;
-        case ResponseCode.INTERNAL_SERVER_ERROR:
-            // handle server error
-        case ResponseCode.TOKEN_INVALID:
-        // handle token invalid (here logout user from app if token invalid)
-            //store.dispatch(logout());
-            //DeviceEventEmitter.emit(notificationKey.LOGOUT, {});
-            break;
-    }
-    return Promise.reject(error.response.data);
+     const originalRequest = error.config;
+        if (errorMessage === 'RefreshToken_NotExist') {
+            logger('RefreshToken_NotExist => logout');
+            // logout here
+            AuthenticateService.logOut();
+            return Promise.reject(error);
+        }
+        if (
+            ((error.response && error.response.status === 401) || errorMessage === 'Token_Expire') &&
+            !originalRequest.retry
+        ) {
+            if (isRefreshing) {
+                try {
+                    const queuePromise: any = await new Promise((resolve: any, reject: any) => {
+                        failedQueue.push({ resolve, reject });
+                    });
+                    originalRequest.headers.Authorization = `Bearer ${queuePromise.token}`;
+                    return request(originalRequest);
+                } catch (err) {
+                    return Promise.reject(err);
+                }
+            }
+            logger('refreshing token...');
+            originalRequest.retry = true;
+            isRefreshing = true;
+            const localRefreshToken = TokenProvider.getRefreshToken();
+            try {
+                const refreshTokenResponse = await axios.post(AUTH_URL_REFRESH_TOKEN, {
+                    refreshToken: localRefreshToken,
+                });
+                const { token, refreshToken } = refreshTokenResponse.data;
+                TokenProvider.setAllNewToken(token, refreshToken);
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+                processQueue(null, token);
+                return request(originalRequest);
+            } catch (err) {
+                processQueue(err, null);
+                return Promise.reject(err);
+            } finally {
+                isRefreshing = false;
+            }
+        }
+        error.message = errorMessage || DEFAULT_ERROR_MESSAGE;
+        error.keyMessage = errorKey || '';
+        return Promise.reject(error.message);
 });
 
 export {
