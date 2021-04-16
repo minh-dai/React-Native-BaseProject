@@ -1,0 +1,26 @@
+import React from 'react';
+import { createStackNavigator } from '@react-navigation/stack';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../app-redux/rootReducer';
+import { APP_ROUTE } from '../config/routes';
+import navigationConfigs from '../config/options';
+import MainTabContainer from './TabScenes';
+import AuthStack from './AuthScenes';
+
+const MainStack = createStackNavigator();
+
+const AppStack = () => (
+        <MainStack.Navigator screenOptions={navigationConfigs}>
+            <MainStack.Screen name={APP_ROUTE.MAIN_TAB} component={MainTabContainer} />
+        </MainStack.Navigator>
+);
+
+const Navigation: React.FunctionComponent = () => {
+    const { userInfo } = useSelector((state: RootState) => state);
+    if (userInfo.token) {
+        return <AppStack />;
+    }
+    return <AuthStack />;
+};
+
+export default Navigation;
